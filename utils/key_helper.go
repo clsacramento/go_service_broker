@@ -4,7 +4,8 @@ import (
 	"encoding/pem"
 	"strings"
 
-	ssh "code.google.com/p/go.crypto/ssh"
+	ssh "golang.org/x/crypto/ssh"
+//	ssh "code.google.com/p/go.crypto/ssh"
 	rsa "crypto/rsa"
 )
 

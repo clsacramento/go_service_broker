@@ -65,12 +65,15 @@ func (c *Controller) CreateServiceInstance(w http.ResponseWriter, r *http.Reques
 
 	err := utils.ProvisionDataFromRequest(r, &instance)
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
+	fmt.Println("Provision data")
 	instanceId, err := c.cloudClient.CreateInstance(instance.Parameters)
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -87,6 +90,7 @@ func (c *Controller) CreateServiceInstance(w http.ResponseWriter, r *http.Reques
 	c.instanceMap[instance.Id] = &instance
 	err = utils.MarshalAndRecord(c.instanceMap, conf.DataPath, conf.ServiceInstancesFileName)
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -103,16 +107,33 @@ func (c *Controller) GetServiceInstance(w http.ResponseWriter, r *http.Request) 
 
 	instanceId := utils.ExtractVarsFromRequest(r, "service_instance_guid")
 	instance := c.instanceMap[instanceId]
+	var state string
+	var err error
+	var failedOperation model.LastOperation
 	if instance == nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
+		fmt.Println("No instance found with id: "+instanceId)
+		state = "unknown"
+		failedOperation.State = "failed"
+		failedOperation.Description = "The service instance has been deleted from the backend"
+		
+		response := failedOperation
+		utils.WriteResponse(w, http.StatusOK, response)
+		return 
+//		w.WriteHeader(http.StatusNotFound)
+//		return
+	} else {
+        	fmt.Println("Get intance with id "+instanceId)
+		fmt.Println(instance)
+
+		state, err = c.cloudClient.GetInstanceState(instance.InternalId)
+		if err != nil {
+			fmt.Println(err)
+	//		w.WriteHeader(http.StatusInternalServerError)
+	//		return
+		}
 	}
 
-	state, err := c.cloudClient.GetInstanceState(instance.InternalId)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+	fmt.Println("The instance state is: "+state)
 
 	if state == "pending" {
 		instance.LastOperation.State = "in progress"
@@ -120,15 +141,21 @@ func (c *Controller) GetServiceInstance(w http.ResponseWriter, r *http.Request) 
 	} else if state == "running" {
 		instance.LastOperation.State = "succeeded"
 		instance.LastOperation.Description = "successfully created service instance"
+//	} else if state == "unknown" {
+//		*instance = model.ServiceInstance{
+//			Id: state,
+//			LastOperation: &failedOperation,
+//		}
 	} else {
 		instance.LastOperation.State = "failed"
 		instance.LastOperation.Description = "failed to create service instance"
 	}
 
-	response := model.CreateServiceInstanceResponse{
-		DashboardUrl:  instance.DashboardUrl,
-		LastOperation: instance.LastOperation,
-	}
+//	response := model.CreateServiceInstanceResponse{
+//		DashboardUrl:  instance.DashboardUrl,
+//		LastOperation: instance.LastOperation,
+//	}
+	response := instance.LastOperation
 	utils.WriteResponse(w, http.StatusOK, response)
 }
 
@@ -138,12 +165,14 @@ func (c *Controller) RemoveServiceInstance(w http.ResponseWriter, r *http.Reques
 	instanceId := utils.ExtractVarsFromRequest(r, "service_instance_guid")
 	instance := c.instanceMap[instanceId]
 	if instance == nil {
+		fmt.Println("No instance found with id: "+instanceId)
 		w.WriteHeader(http.StatusGone)
 		return
 	}
 
 	err := c.cloudClient.DeleteInstance(instance.InternalId)
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -151,17 +180,20 @@ func (c *Controller) RemoveServiceInstance(w http.ResponseWriter, r *http.Reques
 	delete(c.instanceMap, instanceId)
 	utils.MarshalAndRecord(c.instanceMap, conf.DataPath, conf.ServiceInstancesFileName)
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	err = c.deleteAssociatedBindings(instanceId)
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	utils.WriteResponse(w, http.StatusOK, "{}")
+	fmt.Println(instance)
+	utils.WriteResponse(w, http.StatusOK, instance)
 }
 
 func (c *Controller) Bind(w http.ResponseWriter, r *http.Request) {
@@ -178,6 +210,7 @@ func (c *Controller) Bind(w http.ResponseWriter, r *http.Request) {
 
 	ip, userName, privateKey, err := c.cloudClient.InjectKeyPair(instance.InternalId)
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -202,6 +235,7 @@ func (c *Controller) Bind(w http.ResponseWriter, r *http.Request) {
 
 	err = utils.MarshalAndRecord(c.bindingMap, conf.DataPath, conf.ServiceBindingsFileName)
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -222,6 +256,7 @@ func (c *Controller) UnBind(w http.ResponseWriter, r *http.Request) {
 
 	err := c.cloudClient.RevokeKeyPair(instance.InternalId, c.bindingMap[bindingId].PrivateKey)
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -229,6 +264,7 @@ func (c *Controller) UnBind(w http.ResponseWriter, r *http.Request) {
 	delete(c.bindingMap, bindingId)
 	err = utils.MarshalAndRecord(c.bindingMap, conf.DataPath, conf.ServiceBindingsFileName)
 	if err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -253,7 +289,7 @@ func (c *Controller) deleteAssociatedBindings(instanceId string) error {
 func createCloudClient(cloudName string) (client.Client, error) {
 	switch cloudName {
 		case utils.AWS:
-			return client.NewAWSClient("us-east-1"), nil
+			return client.NewAWSClient("eu-west-1"), nil
 
 		case utils.SOFTLAYER, utils.SL:
 			return client.NewSoftLayerClient(), nil
