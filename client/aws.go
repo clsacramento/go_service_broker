@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	AMI_ID                = "ami-dc5e75b4" //"ami-ecb68a84"
-	SECURITY_GROUP_ID     = "sg-b23aead6"
-	SUBNET_ID             = "subnet-0c75a427"
+	VPC_ID                = "vpc-dfd28dbb"
+	AMI_ID                = "ami-6f587e1c" //"ami-dc5e75b4" //"ami-ecb68a84"
+	SECURITY_GROUP_ID     = "sg-ee443c88"
+	SUBNET_ID             = "subnet-62173a14"
 	KEYPAIR_NAME          = "broker_keypair"
 	INSTANCE_TYPE         = "t2.micro"
 	LINUX_USER            = "ubuntu"
@@ -49,8 +50,9 @@ func (c *AWSClient) GetInstanceState(instanceId string) (string, error) {
 		return "", err
 	}
 
-	state, _ := strconv.Unquote(aws.StringValue(instanceOutput.Reservations[0].Instances[0].State.Name))
-	return state, nil
+	fmt.Println(instanceOutput)
+	awsstate := aws.StringValue(instanceOutput.Reservations[0].Instances[0].State.Name)
+	return awsstate, nil
 }
 
 func (c *AWSClient) CreateInstance(parameters interface{}) (string, error) {
@@ -204,7 +206,7 @@ func (c *AWSClient) createInstance(imageId string) (string, error) {
 		// InstanceInitiatedShutdownBehavior: aws.String("ShutdownBehavior"),
 		InstanceType: aws.String(INSTANCE_TYPE),
 		// KernelID:                          aws.String("String"),
-		KeyName: aws.String(KEYPAIR_NAME),
+		//KeyName: aws.String(KEYPAIR_NAME),
 		// Monitoring: &ec2.RunInstancesMonitoringEnabled{
 		// 	Enabled: aws.Boolean(true), // Required
 		// },
@@ -239,20 +241,23 @@ func (c *AWSClient) createInstance(imageId string) (string, error) {
 		// },
 		// PrivateIPAddress: aws.String("String"),
 		// RAMDiskID:        aws.String("String"),
-		SecurityGroupIds: []*string{
-			aws.String(SECURITY_GROUP_ID), // Required
+		//SecurityGroupIds: []*string{
+		//	aws.String(SECURITY_GROUP_ID), // Required
 			// More values...
-		},
-		SubnetId: aws.String(SUBNET_ID),
+		//},
+		//SubnetId: aws.String(SUBNET_ID),
 	}
 
 	instanceOutput, err := c.EC2Client.RunInstances(instanceInput)
 	if err != nil {
+		fmt.Println(err)
 		return "", err
 	}
 
 	fmt.Println(instanceOutput)
-	instanceId, _ := strconv.Unquote(aws.StringValue(instanceOutput.Instances[0].InstanceId))
+//	instanceId, _ := strconv.Unquote(aws.StringValue(instanceOutput.Instances[0].InstanceId))
+	instanceId := aws.StringValue(instanceOutput.Instances[0].InstanceId)
+	fmt.Println("instance created with id: "+instanceId)
 
 	return instanceId, nil
 }

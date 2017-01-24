@@ -1,7 +1,8 @@
 package utils
 
 import (
-	"code.google.com/p/go.crypto/ssh"
+        "golang.org/x/crypto/ssh"
+//	"code.google.com/p/go.crypto/ssh"
 )
 
 type SshClient interface {
