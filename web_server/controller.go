@@ -204,10 +204,12 @@ func (c *Controller) Bind(w http.ResponseWriter, r *http.Request) {
 
 	instance := c.instanceMap[instanceId]
 	if instance == nil {
+		fmt.Println("No instance found with id: "+instanceId)
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
+	fmt.Println("Inject key pair")
 	ip, userName, privateKey, err := c.cloudClient.InjectKeyPair(instance.InternalId)
 	if err != nil {
 		fmt.Println(err)
@@ -250,8 +252,16 @@ func (c *Controller) UnBind(w http.ResponseWriter, r *http.Request) {
 	instanceId := utils.ExtractVarsFromRequest(r, "service_instance_guid")
 	instance := c.instanceMap[instanceId]
 	if instance == nil {
+		fmt.Println("No instance found with id: "+instanceId)
 		w.WriteHeader(http.StatusGone)
 		return
+	}
+
+	binding := c.bindingMap[bindingId]
+	if binding == nil {
+		fmt.Println("No binding found with id: "+bindingId)
+		w.WriteHeader(http.StatusGone)
+                return
 	}
 
 	err := c.cloudClient.RevokeKeyPair(instance.InternalId, c.bindingMap[bindingId].PrivateKey)

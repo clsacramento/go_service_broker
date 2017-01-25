@@ -23,7 +23,7 @@ const (
 	INSTANCE_TYPE         = "t2.micro"
 	LINUX_USER            = "ubuntu"
 	KEYPAIR_DIR_NAME      = ".gsb"
-	PIRVATE_KEY_FILE_NAME = "broker_id_rsa"
+	PRIVATE_KEY_FILE_NAME = "broker_id_rsa"
 	PUBLIC_KEY_FILE_NAME  = "broker_id_rsa.pub"
 )
 
@@ -102,12 +102,15 @@ func (c *AWSClient) InjectKeyPair(instanceId string) (string, string, string, er
 		return "", "", "", err
 	}
 
-	ip, _ := strconv.Unquote(aws.StringValue(instanceOutput.Reservations[0].Instances[0].PublicIpAddress))
-	pemBytes, err := utils.ReadFile(path.Join(os.Getenv("HOME"), KEYPAIR_DIR_NAME, PIRVATE_KEY_FILE_NAME))
+//	ip, _ := strconv.Unquote(aws.StringValue(instanceOutput.Reservations[0].Instances[0].PublicIpAddress))
+	ip := aws.StringValue(instanceOutput.Reservations[0].Instances[0].PublicIpAddress)
+	fmt.Println("instance ip: "+ip)
+	pemBytes, err := utils.ReadFile(path.Join(os.Getenv("HOME"), KEYPAIR_DIR_NAME, PRIVATE_KEY_FILE_NAME))
 	if err != nil {
 		return "", "", "", err
 	}
 
+	fmt.Println("Get aws ssh client")
 	awsSShClient, err := utils.GetSshClient(LINUX_USER, pemBytes, ip)
 	if err != nil {
 		return "", "", "", err
@@ -118,6 +121,7 @@ func (c *AWSClient) InjectKeyPair(instanceId string) (string, string, string, er
 		cat ./broker_id_rsa.pub >> .ssh/authorized_keys
 		cat ./broker_id_rsa`
 
+	fmt.Println("Exec command on aws ssh client session to get private key")
 	privateKey, err := awsSShClient.ExecCommand(command)
 	if err != nil {
 		return "", "", "", err
@@ -139,7 +143,7 @@ func (c *AWSClient) RevokeKeyPair(instanceId string, privateKey string) error {
 	}
 
 	ip, _ := strconv.Unquote(aws.StringValue(instanceOutput.Reservations[0].Instances[0].PublicIpAddress))
-	pemBytes, err := utils.ReadFile(path.Join(os.Getenv("HOME"), KEYPAIR_DIR_NAME, PIRVATE_KEY_FILE_NAME))
+	pemBytes, err := utils.ReadFile(path.Join(os.Getenv("HOME"), KEYPAIR_DIR_NAME, PRIVATE_KEY_FILE_NAME))
 	if err != nil {
 		return err
 	}
@@ -206,7 +210,7 @@ func (c *AWSClient) createInstance(imageId string) (string, error) {
 		// InstanceInitiatedShutdownBehavior: aws.String("ShutdownBehavior"),
 		InstanceType: aws.String(INSTANCE_TYPE),
 		// KernelID:                          aws.String("String"),
-		//KeyName: aws.String(KEYPAIR_NAME),
+		KeyName: aws.String(KEYPAIR_NAME),
 		// Monitoring: &ec2.RunInstancesMonitoringEnabled{
 		// 	Enabled: aws.Boolean(true), // Required
 		// },
@@ -263,24 +267,29 @@ func (c *AWSClient) createInstance(imageId string) (string, error) {
 }
 
 func (c *AWSClient) setupKeyPair() error {
-	private_key_file := path.Join(os.Getenv("HOME"), KEYPAIR_DIR_NAME, PIRVATE_KEY_FILE_NAME)
+	fmt.Println("Setup Keypair")
+	private_key_file := path.Join(os.Getenv("HOME"), KEYPAIR_DIR_NAME, PRIVATE_KEY_FILE_NAME)
 
 	if !utils.Exists(private_key_file) {
 		keypairInput := &ec2.CreateKeyPairInput{
 			KeyName: aws.String(KEYPAIR_NAME),
 		}
 
+		fmt.Println("Create Keypair in EC2")
 		keypairOutput, err := c.EC2Client.CreateKeyPair(keypairInput)
 		if err != nil {
 			return err
 		}
 
+		fmt.Println("Create local keypair directory")
 		key_dir := path.Join(os.Getenv("HOME"), KEYPAIR_DIR_NAME)
 		if !utils.MkDir(key_dir) {
 			return errors.New("failed to create local keypair directory")
 		}
 
-		key_data, _ := strconv.Unquote(aws.StringValue(keypairOutput.KeyMaterial))
+		fmt.Println("Write key file")
+		key_data := aws.StringValue(keypairOutput.KeyMaterial)
+		fmt.Println(key_data)
 		err = utils.WriteFile(private_key_file, []byte(key_data))
 		if err != nil {
 			return errors.New("failed to save private key file")
